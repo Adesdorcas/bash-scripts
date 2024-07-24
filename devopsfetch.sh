@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# Functions
+list_active_ports() {
+    echo -e "Port\tService"
+    sudo netstat -tuln | awk 'NR>2 {print $4, $6}' | while read line; do
+        port=$(echo $line | awk '{print $1}')
+        service=$(sudo lsof -i :$(echo $port | awk -F: '{print $NF}') | awk 'NR>1 {print $1}' | sort -u)
+        echo -e "$port\t$service"
+    done | column -t
+}
+
+port_info() {
+    port=$1
+    echo -e "COMMAND\tPID\tUSER\tFD\tTYPE\tDEVICE\tSIZE/OFF\tNODE\tNAME"
+    sudo lsof -i :$port | awk 'NR>1 {print}' | column -t
+}
+
+list_docker_info() {
+    echo "Images:"
+    sudo docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedSince}}\t{{.Size}}"
+    echo ""
+    echo "Containers:"
+    sudo docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.ID}}\t{{.Status}}\t{{.Ports}}"
+}
+
+container_info() {
+    container_name=$1
+    sudo docker inspect $container_name | jq '.[] | {Name: .Name, ID: .Id, State: .State, Config: .Config}'
+}
+
+list_nginx_domains() {
+    sudo nginx -T 2>/dev/null | grep -E 'server_name|listen' | awk '{print $2}'
+}
+
+nginx_info() {
+    domain=$1
+    sudo nginx -T 2>/dev/null | grep -A10 "server_name $domain"
+}
+
+list_users() {
+    echo -e "Username\tLast Login"
+    lastlog | column -t
+}
+
+user_info() {
+    username=$1
+    lastlog | grep $username | column -t
+}
+
+display_activities_within_time_range() {
+    start_time=$1
+    end_time=$2
+    sudo journalctl --since="$start_time" --until="$end_time" | tail -n +2
+}
+
+show_help() {
+    cat << EOF
+Usage: devopsfetch.sh [OPTIONS]
+Options:
+    -p, --port [PORT]     Display all active ports or info about a specific port
+    -d, --docker [CONTAINER]  List Docker images and containers or info about a specific container
+    -n, --nginx [DOMAIN]  Display all Nginx domains or info about a specific domain
+    -u, --users [USERNAME]    List all users or info about a specific user
+    -t, --time START,END  Display activities within a specified time range
+    -h, --help            Show this help message and exit
+EOF
+}
+
+# Argument parsing
+while getopts "p::d::n::u::t:h" opt; do
+    case $opt in
+        p)
+            if [[ -z $OPTARG ]]; then
+                list_active_ports
+            else
+                port_info $OPTARG
+            fi
+            ;;
+        d)
+            if [[ -z $OPTARG ]]; then
+                list_docker_info
+            else
+                container_info $OPTARG
+            fi
+            ;;
+        n)
+            if [[ -z $OPTARG ]]; then
+                list_nginx_domains
+            else
+                nginx_info $OPTARG
+            fi
+            ;;
+        u)
+            if [[ -z $OPTARG ]]; then
+                list_users
+            else
+                user_info $OPTARG
+            fi
+            ;;
+        t)
+            IFS=',' read -r start_time end_time <<< "$OPTARG"
+            display_activities_within_time_range $start_time $end_time
+            ;;
+        h)
+            show_help
+            exit 0
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            show_help
+            exit 1
+            ;;
+    esac
+done
