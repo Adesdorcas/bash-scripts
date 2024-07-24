@@ -2,12 +2,8 @@
 
 # Functions
 list_active_ports() {
-    echo -e "Port\tService"
-    sudo netstat -tuln | awk 'NR>2 {print $4, $6}' | while read line; do
-        port=$(echo $line | awk '{print $1}')
-        service=$(sudo lsof -i :$(echo $port | awk -F: '{print $NF}') | awk 'NR>1 {print $1}' | sort -u)
-        echo -e "$port\t$service"
-    done | column -t
+    echo -e "Proto\tLocal Address\tForeign Address\tState\tPID/Program name"
+    sudo netstat -tuln | awk 'NR>2 {print $1"\t"$4"\t"$5"\t"$6"\t"$7}' | column -t
 }
 
 port_info() {
